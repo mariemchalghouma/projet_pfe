@@ -1,4 +1,4 @@
-import { useState, createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -10,10 +10,16 @@ import {
 // Context for sidebar state
 export const SidebarContext = createContext(null);
 
-export const useSidebar = () => useContext(SidebarContext);
+export const useSidebar = () => {
+    const ctx = useContext(SidebarContext);
+    if (!ctx) {
+        throw new Error('useSidebar must be used within SidebarContext.Provider');
+    }
+    return ctx;
+};
 
 const Sidebar = () => {
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const { isCollapsed, toggleCollapsed } = useSidebar();
     const location = useLocation();
     const { logout } = useAuth();
 
@@ -63,7 +69,7 @@ const Sidebar = () => {
                     <span className="text-lg font-bold text-gray-800 whitespace-nowrap">FleetTracker</span>
                 )}
                 <button
-                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    onClick={toggleCollapsed}
                     className={`p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors ${isCollapsed ? 'mx-auto mt-1' : 'ml-auto'}`}
                 >
                     <FiMenu className="text-lg" />
