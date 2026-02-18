@@ -26,11 +26,14 @@ api.interceptors.request.use(
 
 // Auth API
 export const authAPI = {
-
     login: (data) => api.post('/auth/login', data),
     getMe: () => api.get('/auth/me'),
 };
 
-
+// Camions API (Voyage + local_histo_gps_all)
+export const camionsAPI = {
+    getCamions: () => api.get('/camions'),
+    getCamionTrajet: (camion) => api.get(`/camions/${encodeURIComponent(camion)}/trajet`),
+};
 
 export default api;
