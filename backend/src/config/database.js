@@ -39,7 +39,7 @@ export const initDatabase = async () => {
       )
     `);
 
-       
+
         await client.query(`
             CREATE INDEX IF NOT EXISTS idx_local_histo_gps_camion_ts
             ON local_histo_gps_all (camion, gps_timestamp DESC)
@@ -54,9 +54,9 @@ export const initDatabase = async () => {
                 ('Ahmed Trabelsi', '185 TDS 9321', '+216 97 456 789')
             `);
             await client.query(`
-                INSERT INTO local_histo_gps_all (gps_timestamp, latitude, longitude, speed, odometre, ignition, camion) VALUES
-                (NOW() - INTERVAL '10 minutes', 36.8065, 10.1815, 72, 145230, true, '120 TDS 4578'),
-                (NOW() - INTERVAL '30 minutes', 36.8101, 10.0863, 0, 98450, false, '185 TDS 9321')
+                INSERT INTO local_histo_gps_all (gps_timestamp, latitude, longitude, speed, odometer, ignition, camion) VALUES
+                (NOW() - INTERVAL '10 minutes', 36.8065, 10.1815, 72, 145230, 1, '120 TDS 4578'),
+                (NOW() - INTERVAL '30 minutes', 36.8101, 10.0863, 0, 98450, 0, '185 TDS 9321')
             `);
             console.log('✅ Données de test (voyage + GPS) insérées.');
         }

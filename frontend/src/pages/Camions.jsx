@@ -34,6 +34,7 @@ const statusConfig = {
     en_route: { label: 'En route', color: '#22c55e', badgeBg: '#dcfce7', badgeText: '#16a34a', icon: createIcon('#22c55e', 'C') },
     arrete: { label: 'Arrêté', color: '#f97316', badgeBg: '#fff7ed', badgeText: '#ea580c', icon: createIcon('#f97316', 'C') },
     arrete_nc: { label: 'Arrêté NC', color: '#ef4444', badgeBg: '#fef2f2', badgeText: '#dc2626', icon: createIcon('#ef4444', 'C') },
+    unknown: { label: 'Inconnu', color: '#94a3b8', badgeBg: '#f1f5f9', badgeText: '#475569', icon: createIcon('#94a3b8', '?') },
 };
 
 // ====== COMPOSANT PRINCIPAL ======
@@ -62,7 +63,7 @@ const Camions = () => {
                     const address = await reverseGeocode(camion.lat, camion.lng);
                     return { plaque: camion.plaque, address };
                 });
-            
+
             const addressResults = await Promise.all(addressPromises);
             const newAddresses = new Map(addressResults.map(({ plaque, address }) => [plaque, address]));
             setAddresses(newAddresses);
@@ -71,7 +72,7 @@ const Camions = () => {
             const markers = camionsData
                 .filter((c) => c.lat != null && c.lng != null)
                 .map((camion) => {
-                    const config = statusConfig[camion.statut] || statusConfig.arrete;
+                    const config = statusConfig[camion.statut] || statusConfig.unknown;
                     return {
                         id: camion.plaque,
                         lat: camion.lat,
@@ -84,7 +85,7 @@ const Camions = () => {
                         badgeColor: config.color,
                     };
                 });
-            
+
             setMapData({ markers, polylines: [], flyTo: null, selectedMarkerId: null });
         } catch (err) {
             setError(err.response?.data?.message || 'Impossible de charger les camions');
@@ -108,7 +109,7 @@ const Camions = () => {
             const { data } = await camionsAPI.getCamionTrajet(plaque);
             const trajetData = data.data || [];
             setTrajet(trajetData);
-            
+
             // Mettre à jour la carte globale avec le trajet
             if (trajetData.length > 0) {
                 setPolylines([{
@@ -137,7 +138,7 @@ const Camions = () => {
 
     const handleSelectCamion = async (camion) => {
         setSelectedCamionPlaque(camion.plaque);
-        
+
         // Charger l'adresse si pas encore en cache
         if (camion.lat != null && camion.lng != null) {
             if (!addresses.has(camion.plaque)) {
@@ -148,7 +149,7 @@ const Camions = () => {
         } else {
             setFlyTo(null);
         }
-        
+
         loadTrajet(camion.plaque);
     };
 
@@ -161,9 +162,9 @@ const Camions = () => {
 
     return (
         <Layout>
-            <div className="flex h-screen -mt-0">
+            <div className="flex h-full">
                 {/* ====== PANNEAU GAUCHE ====== */}
-                <div className="w-[400px] bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-hidden">
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
                     {/* === LOADING / ERROR === */}
                     {loading && (
@@ -202,12 +203,12 @@ const Camions = () => {
                                     <span
                                         className="px-3 py-1 rounded-full text-xs font-bold"
                                         style={{
-                                            background: statusConfig[selectedCamion.statut].badgeBg,
-                                            color: statusConfig[selectedCamion.statut].badgeText,
-                                            border: `1.5px solid ${statusConfig[selectedCamion.statut].color}`
+                                            background: (statusConfig[selectedCamion.statut] || statusConfig.unknown).badgeBg,
+                                            color: (statusConfig[selectedCamion.statut] || statusConfig.unknown).badgeText,
+                                            border: `1.5px solid ${(statusConfig[selectedCamion.statut] || statusConfig.unknown).color}`
                                         }}
                                     >
-                                        {statusConfig[selectedCamion.statut].label}
+                                        {(statusConfig[selectedCamion.statut] || statusConfig.unknown).label}
                                     </span>
                                 </div>
                             </div>
@@ -335,7 +336,7 @@ const Camions = () => {
                                     <div className="p-4 text-center text-gray-500 text-sm">Aucun camion à afficher.</div>
                                 )}
                                 {filteredCamions.map((camion) => {
-                                    const config = statusConfig[camion.statut];
+                                    const config = statusConfig[camion.statut] || statusConfig.unknown;
                                     return (
                                         <div
                                             key={camion.plaque}

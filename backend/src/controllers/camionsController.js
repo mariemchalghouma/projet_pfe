@@ -15,11 +15,11 @@ export const getCamions = async (req, res) => {
                 g.latitude AS lat,
                 g.longitude AS lng,
                 g.speed AS vitesse,
-                g.odometre AS kilometrage,
+                g.odometer AS kilometrage,
                 g.ignition
             FROM voyage v
             LEFT JOIN LATERAL (
-                SELECT gps_timestamp, latitude, longitude, speed, odometre, ignition
+                SELECT gps_timestamp, latitude, longitude, speed, odometer, ignition
                 FROM local_histo_gps_all
                 WHERE local_histo_gps_all.camion = v.camion
                 ORDER BY gps_timestamp DESC
