@@ -5,6 +5,8 @@ import PrivateRoute from './components/auth/PrivateRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Camions from './pages/Camions';
+import Arrets from './pages/Arrets';
+import GestionPoi from './pages/GestionPoi';
 import './index.css';
 
 function App() {
@@ -27,6 +29,22 @@ function App() {
                             element={
                                 <PrivateRoute>
                                     <Camions />
+                                </PrivateRoute>
+                            }
+                        />
+                        <Route
+                            path="/suivi-arret"
+                            element={
+                                <PrivateRoute>
+                                    <Arrets />
+                                </PrivateRoute>
+                            }
+                        />
+                        <Route
+                            path="/gestion-poi"
+                            element={
+                                <PrivateRoute>
+                                    <GestionPoi />
                                 </PrivateRoute>
                             }
                         />
