@@ -1,24 +1,10 @@
 import { useEffect, useCallback } from 'react';
 import Layout from '../components/layout/Layout';
 import { useMapContext } from '../context/MapContext';
+import { camionsAPI } from '../services/api';
+import { reverseGeocodeBatch } from '../services/geocoding';
 import L from 'leaflet';
 import { FiTruck, FiUsers, FiNavigation, FiActivity, FiArrowUp, FiArrowDown } from 'react-icons/fi';
-
-// Minimal truck data for map display on dashboard
-const truckOverview = [
-    { id: 1, plaque: '120 TDS 4578', chauffeur: 'Mohamed Ben Ali', lat: 36.8065, lng: 10.1815, vitesse: 72, statut: 'en_route', localisation: 'Tunis' },
-    { id: 2, plaque: '185 TDS 9321', chauffeur: 'Ahmed Trabelsi', lat: 36.8101, lng: 10.0863, vitesse: 0, statut: 'arrete', localisation: 'Manouba' },
-    { id: 3, plaque: '210 NGI 1234', chauffeur: 'Slim Bouazizi', lat: 36.8625, lng: 10.1956, vitesse: 85, statut: 'en_route', localisation: 'Ariana' },
-    { id: 4, plaque: '95 TDS 6543', chauffeur: 'Karim Hamdi', lat: 36.4513, lng: 10.7357, vitesse: 0, statut: 'arrete_nc', localisation: 'Nabeul' },
-    { id: 5, plaque: '142 TDS 8877', chauffeur: 'Youssef Gharbi', lat: 35.8256, lng: 10.6369, vitesse: 63, statut: 'en_route', localisation: 'Sousse' },
-    { id: 6, plaque: '78 NGI 5544', chauffeur: 'Nabil Jaziri', lat: 36.4029, lng: 10.1429, vitesse: 0, statut: 'arrete', localisation: 'Zaghouan' },
-    { id: 7, plaque: '163 TDS 3211', chauffeur: 'Hedi Mansour', lat: 37.2744, lng: 9.8739, vitesse: 55, statut: 'en_route', localisation: 'Bizerte' },
-    { id: 8, plaque: '91 NGI 7788', chauffeur: 'Omar Saidi', lat: 34.7406, lng: 10.7603, vitesse: 0, statut: 'arrete', localisation: 'Sfax' },
-    { id: 9, plaque: '55 TDS 4422', chauffeur: 'Amine Bouzid', lat: 36.4000, lng: 10.6167, vitesse: 40, statut: 'en_route', localisation: 'Hammamet' },
-    { id: 10, plaque: '200 NGI 6655', chauffeur: 'Walid Khelifi', lat: 35.6781, lng: 10.0963, vitesse: 0, statut: 'arrete_nc', localisation: 'Kairouan' },
-    { id: 11, plaque: '88 TDS 1199', chauffeur: 'Sami Bouazizi', lat: 33.8814, lng: 10.0982, vitesse: 78, statut: 'en_route', localisation: 'Gabès' },
-    { id: 12, plaque: '134 NGI 3344', chauffeur: 'Fathi Meddeb', lat: 35.7643, lng: 10.8113, vitesse: 0, statut: 'arrete', localisation: 'Monastir' },
-];
 
 const createIcon = (color, letter) => {
     return L.divIcon({
@@ -43,21 +29,47 @@ const Dashboard = () => {
     const { setMapData } = useMapContext();
 
     useEffect(() => {
-        const markers = truckOverview.map(t => {
-            const cfg = statusIcons[t.statut];
-            return {
-                id: t.id,
-                lat: t.lat,
-                lng: t.lng,
-                icon: cfg.icon,
-                label: t.plaque,
-                sublabel: t.chauffeur,
-                info: `📍 ${t.localisation} · ${t.vitesse} km/h`,
-                badgeLabel: cfg.label,
-                badgeColor: cfg.color,
-            };
-        });
-        setMapData({ markers, polylines: [], flyTo: null, selectedMarkerId: null });
+        const loadCamions = async () => {
+            try {
+                const { data } = await camionsAPI.getCamions();
+                const camionsData = data.data || [];
+                
+                // Charger les adresses pour tous les camions avec GPS
+                const coordsWithGPS = camionsData
+                    .filter((c) => c.lat != null && c.lng != null)
+                    .map((c) => ({ lat: c.lat, lng: c.lng }));
+                
+                const addresses = await reverseGeocodeBatch(coordsWithGPS);
+                
+                // Créer les marqueurs avec les adresses
+                const markers = camionsData
+                    .filter((c) => c.lat != null && c.lng != null)
+                    .map((camion) => {
+                        const cfg = statusIcons[camion.statut] || statusIcons.arrete;
+                        const addressKey = `${camion.lat},${camion.lng}`;
+                        const address = addresses.get(addressKey) || camion.localisation || '—';
+                        
+                        return {
+                            id: camion.plaque,
+                            lat: camion.lat,
+                            lng: camion.lng,
+                            icon: cfg.icon,
+                            label: camion.plaque,
+                            sublabel: camion.chauffeur || '—',
+                            info: `📍 ${address} · ${camion.vitesse ?? 0} km/h`,
+                            badgeLabel: cfg.label,
+                            badgeColor: cfg.color,
+                        };
+                    });
+                
+                setMapData({ markers, polylines: [], flyTo: null, selectedMarkerId: null });
+            } catch (error) {
+                console.error('Erreur chargement camions Dashboard:', error);
+                setMapData({ markers: [], polylines: [], flyTo: null, selectedMarkerId: null });
+            }
+        };
+        
+        loadCamions();
     }, [setMapData]);
 
     return (

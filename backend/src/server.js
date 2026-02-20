@@ -5,6 +5,7 @@ import pool, { initDatabase } from './config/database.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
+import camionsRoutes from './routes/camions.js';
 
 
 // Load environment variables
@@ -35,6 +36,7 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/camions', camionsRoutes);
 
 
 // 404 handler
