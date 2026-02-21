@@ -5,94 +5,6 @@ import L from 'leaflet';
 import { FiCalendar, FiUpload, FiPlus, FiFilter } from 'react-icons/fi';
 import PoiModal from '../components/PoiModal'; // Import the new modal
 
-// ====== DONNÉES SIMULÉES (MOCK DATA) ======
-const arretsData = [
-    {
-        id: 1,
-        camion: '185 TDS 9321',
-        date: '2026-02-16 10:30',
-        duree: '45 min',
-        poiGps: 'Dépôt Manouba',
-        poiGprs: 'Dépôt Manouba',
-        poiPlanning: 'Dépôt Manouba',
-        nVoyage: 'V-2026-001',
-        status: 'conforme',
-        lat: 36.8101,
-        lng: 10.0863,
-        action: null
-    },
-    {
-        id: 2,
-        camion: '95 TDS 6543',
-        date: '2026-02-16 09:15',
-        duree: '2h 30min',
-        poiGps: '-',
-        poiGprs: '-',
-        poiPlanning: 'Client Nabeul',
-        nVoyage: 'V-2026-003',
-        status: 'non_conforme',
-        lat: 36.4513,
-        lng: 10.7357,
-        action: 'ajouter_poi'
-    },
-    {
-        id: 3,
-        camion: '78 NGI 5544',
-        date: '2026-02-16 11:00',
-        duree: '1h 15min',
-        poiGps: 'Station Zaghouan',
-        poiGprs: 'Station Zaghouan',
-        poiPlanning: 'Station Zaghouan',
-        nVoyage: 'V-2026-005',
-        status: 'conforme',
-        lat: 36.4029,
-        lng: 10.1429,
-        action: null
-    },
-    {
-        id: 4,
-        camion: '201 TDS 3366',
-        date: '2026-02-16 08:00',
-        duree: '3h 45min',
-        poiGps: '-',
-        poiGprs: '-',
-        poiPlanning: '-',
-        nVoyage: 'V-2026-007',
-        status: 'non_conforme',
-        lat: 35.6781,
-        lng: 10.0963,
-        action: 'ajouter_poi'
-    },
-    {
-        id: 5,
-        camion: '67 TDS 1188',
-        date: '2026-02-16 12:30',
-        duree: '30 min',
-        poiGps: 'Client Monastir',
-        poiGprs: 'Client Monastir',
-        poiPlanning: 'Client Monastir',
-        nVoyage: 'V-2026-009',
-        status: 'conforme',
-        lat: 35.7643,
-        lng: 10.8113,
-        action: null
-    },
-    {
-        id: 6,
-        camion: '55 TDS 4422',
-        date: '2026-02-16 14:10',
-        duree: '20 min',
-        poiGps: 'Zone Industrielle',
-        poiGprs: 'Zone Industrielle',
-        poiPlanning: 'Zone Industrielle',
-        nVoyage: 'V-2026-012',
-        status: 'warning',
-        lat: 36.4000,
-        lng: 10.6167,
-        action: null
-    }
-];
-
 // ====== ICÔNES PERSONNALISÉES ======
 const createIcon = (color) => {
     return L.divIcon({
@@ -141,8 +53,28 @@ const MapController = ({ position, zoom, resizeTrigger }) => {
 
 const Arrets = () => {
     // === ETATS ===
+    const [arrets, setArrets] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [selectedArretId, setSelectedArretId] = useState(null);
     const [flyTo, setFlyTo] = useState(null);
+
+    // Fetch data from API
+    useEffect(() => {
+        const fetchArrets = async () => {
+            try {
+                const response = await fetch('http://localhost:5000/api/arrets');
+                const result = await response.json();
+                if (result.success) {
+                    setArrets(result.data);
+                }
+            } catch (error) {
+                console.error('Error fetching arrets:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchArrets();
+    }, []);
 
     // Layout Resizable
     const [leftPanelWidth, setLeftPanelWidth] = useState(55); // Pourcentage
@@ -159,7 +91,7 @@ const Arrets = () => {
 
     // === FILTRAGE ET STATS DYNAMIQUES ===
     const filteredData = useMemo(() => {
-        return arretsData.filter(arret => {
+        return arrets.filter(arret => {
             const matchesDate = filterDate ? arret.date.includes(filterDate) : true;
             const matchesType =
                 filterType === 'Tous' ? true :
@@ -167,7 +99,7 @@ const Arrets = () => {
                         filterType === 'Non conforme' ? arret.status === 'non_conforme' : true;
             return matchesDate && matchesType;
         });
-    }, [filterDate, filterType]);
+    }, [arrets, filterDate, filterType]);
 
     const stats = useMemo(() => {
         return {
@@ -296,7 +228,6 @@ const Arrets = () => {
                                     <th className="px-4 py-3 font-semibold">Date</th>
                                     <th className="px-4 py-3 font-semibold">Durée</th>
                                     <th className="px-4 py-3 font-semibold">POI GPS</th>
-                                    <th className="px-4 py-3 font-semibold">POI GPRS</th>
                                     <th className="px-4 py-3 font-semibold">POI Planning</th>
                                     <th className="px-4 py-3 font-semibold">N° Voyage</th>
                                     <th className="px-4 py-3 font-semibold rounded-tr-lg">Action</th>
@@ -322,7 +253,6 @@ const Arrets = () => {
                                         </td>
                                         <td className="px-4 py-4 font-medium">{arret.duree}</td>
                                         <td className="px-4 py-4 text-gray-600">{arret.poiGps}</td>
-                                        <td className="px-4 py-4 text-gray-600">{arret.poiGprs}</td>
                                         <td className="px-4 py-4 text-gray-600">{arret.poiPlanning}</td>
                                         <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{arret.nVoyage}</td>
                                         <td className="px-4 py-4">

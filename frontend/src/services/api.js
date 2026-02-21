@@ -36,4 +36,12 @@ export const camionsAPI = {
     getCamionTrajet: (camion) => api.get(`/camions/${encodeURIComponent(camion)}/trajet`),
 };
 
+// POI API
+export const poiAPI = {
+    getPOIs: () => api.get('/poi'),
+    createPOI: (data) => api.post('/poi', data),
+    updatePOI: (id, data) => api.put(`/poi/${id}`, data),
+    deletePOI: (id) => api.delete(`/poi/${id}`),
+};
+
 export default api;

@@ -39,6 +39,20 @@ export const initDatabase = async () => {
       )
     `);
 
+        // Create poi table
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS poi (
+        id SERIAL PRIMARY KEY,
+        nom VARCHAR(100) NOT NULL,
+        groupe TEXT,
+        type VARCHAR(50) DEFAULT 'Point',
+        lat NUMERIC(10,6),
+        lng NUMERIC(10,6),
+        adresse VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
 
         await client.query(`
             CREATE INDEX IF NOT EXISTS idx_local_histo_gps_camion_ts

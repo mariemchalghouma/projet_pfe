@@ -5,20 +5,9 @@ import L from 'leaflet';
 import { FiSearch, FiFilter, FiPlus, FiEdit2, FiTrash2, FiClock, FiGrid, FiList } from 'react-icons/fi';
 import PoiModal from '../components/PoiModal';
 import GroupModal from '../components/GroupModal';
+import { poiAPI } from '../services/api';
 
-// ====== MOCK DATA ======
-const initialPois = [
-    { id: 1, nom: 'Dépôt Tunis', groupe: 'Dépôt', type: 'Point', lat: 36.75, lng: 10.15, adresse: 'Zone Ind. La Charguia, Tunis' },
-    { id: 2, nom: 'Dépôt Manouba', groupe: 'Dépôt', type: 'Point', lat: 36.7333, lng: 10.0333, adresse: 'Rte de Manouba, Manouba' },
-    { id: 3, nom: 'Client Nabeul', groupe: 'Client Externe', type: 'Point', lat: 36.4513, lng: 10.7357, adresse: 'Av. Habib Bourguiba, Nabeul' },
-    { id: 4, nom: 'Station Zaghouan', groupe: 'Station', type: 'Point', lat: 36.4025, lng: 10.1429, adresse: 'GP3, Zaghouan' },
-    { id: 5, nom: 'Client Monastir', groupe: 'Client Interne', type: 'Point', lat: 35.7643, lng: 10.8113, adresse: 'Zone Ind. Monastir' },
-    { id: 6, nom: 'Station Ariana', groupe: 'Station', type: 'Point', lat: 36.8625, lng: 10.1956, adresse: 'Rte de Bizerte, Ariana' },
-    { id: 7, nom: 'Client Ben Arous', groupe: 'Client Interne', type: 'Point', lat: 36.7531, lng: 10.2222, adresse: 'Zone Ind. Ben Arous' },
-    { id: 8, nom: 'Zone Industrielle Sfax', groupe: 'Zone Industrielle', type: 'Point', lat: 34.7406, lng: 10.7603, adresse: 'Rte de Gabes, Sfax' },
-    { id: 9, nom: 'Dépôt Sousse', groupe: 'Dépôt', type: 'Point', lat: 35.8256, lng: 10.6369, adresse: 'Zone Ind. Akouda' },
-    { id: 10, nom: 'Client Bizerte', groupe: 'Client Externe', type: 'Point', lat: 37.2744, lng: 9.8739, adresse: 'Zone Franche, Bizerte' },
-];
+const initialPois = [];
 
 const initialGroups = [
     { id: 'g1', nom: 'Dépôt', description: 'Sites principaux', couleur: '#fbbf24', bg: '#fffbeb', border: '#f59e0b' },
@@ -68,6 +57,7 @@ const GestionPoi = () => {
     // === STATES ===
     const [pois, setPois] = useState(initialPois);
     const [groups, setGroups] = useState(initialGroups);
+    const [loading, setLoading] = useState(true);
 
     const [search, setSearch] = useState('');
     const [filterGroup, setFilterGroup] = useState('Tous');
@@ -77,8 +67,26 @@ const GestionPoi = () => {
 
     // Modals
     const [showPoiModal, setShowPoiModal] = useState(false);
+    const [editingPoi, setEditingPoi] = useState(null);
     const [showGroupModal, setShowGroupModal] = useState(false);
     const [editingGroup, setEditingGroup] = useState(null);
+
+    // Fetch POIs
+    const fetchPois = async () => {
+        setLoading(true);
+        try {
+            const { data } = await poiAPI.getPOIs();
+            setPois(data.data || []);
+        } catch (error) {
+            console.error('Failed to fetch POIs:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchPois();
+    }, []);
 
     // Filter Logic
     const filteredPois = useMemo(() => {
@@ -92,7 +100,37 @@ const GestionPoi = () => {
     // Handlers
     const handleSelectPoi = (poi) => {
         setSelectedPoiId(poi.id);
-        setFlyTo([poi.lat, poi.lng]);
+        const lat = parseFloat(poi.lat);
+        const lng = parseFloat(poi.lng);
+        if (!isNaN(lat) && !isNaN(lng)) {
+            setFlyTo([lat, lng]);
+        }
+    };
+
+    const handleSavePoi = async (poiData) => {
+        try {
+            if (editingPoi) {
+                await poiAPI.updatePOI(editingPoi.id, poiData);
+            } else {
+                await poiAPI.createPOI(poiData);
+            }
+            setShowPoiModal(false);
+            setEditingPoi(null);
+            fetchPois();
+        } catch (error) {
+            console.error('Failed to save POI:', error);
+        }
+    };
+
+    const handleDeletePoi = async (id) => {
+        if (window.confirm('Voulez-vous vraiment supprimer ce POI ?')) {
+            try {
+                await poiAPI.deletePOI(id);
+                fetchPois();
+            } catch (error) {
+                console.error('Failed to delete POI:', error);
+            }
+        }
     };
 
     const handleSaveGroup = (groupData) => {
@@ -239,8 +277,18 @@ const GestionPoi = () => {
                                             <div className="flex justify-between items-start mb-2">
                                                 <h3 className="font-bold text-gray-800">{poi.nom}</h3>
                                                 <div className="flex gap-2">
-                                                    <button className="text-gray-400 hover:text-orange-500 transition-colors bg-gray-50 p-1.5 rounded-md"><FiEdit2 size={14} /></button>
-                                                    <button className="text-gray-400 hover:text-red-500 transition-colors bg-gray-50 p-1.5 rounded-md"><FiTrash2 size={14} /></button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setEditingPoi(poi); setShowPoiModal(true); }}
+                                                        className="text-gray-400 hover:text-orange-500 transition-colors bg-gray-50 p-1.5 rounded-md"
+                                                    >
+                                                        <FiEdit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleDeletePoi(poi.id); }}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors bg-gray-50 p-1.5 rounded-md"
+                                                    >
+                                                        <FiTrash2 size={14} />
+                                                    </button>
                                                 </div>
                                             </div>
 
@@ -351,7 +399,7 @@ const GestionPoi = () => {
                         {filteredPois.map(poi => (
                             <Marker
                                 key={poi.id}
-                                position={[poi.lat, poi.lng]}
+                                position={[parseFloat(poi.lat), parseFloat(poi.lng)]}
                                 icon={createCustomIcon(poi.groupe, groups)}
                                 eventHandlers={{
                                     click: () => handleSelectPoi(poi)
@@ -392,8 +440,10 @@ const GestionPoi = () => {
 
             <PoiModal
                 isOpen={showPoiModal}
-                onClose={() => setShowPoiModal(false)}
-                groups={groups} // Pass dynamic groups
+                onClose={() => { setShowPoiModal(false); setEditingPoi(null); }}
+                groups={groups}
+                initialData={editingPoi}
+                onSubmit={handleSavePoi}
             />
 
             <GroupModal

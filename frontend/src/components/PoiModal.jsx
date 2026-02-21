@@ -54,15 +54,16 @@ const LocationPicker = ({ mode, onLocationSelect, currentPos, polygonPoints, set
     );
 };
 
-const PoiModal = ({ isOpen, onClose, initialData }) => {
+const PoiModal = ({ isOpen, onClose, initialData, groups = [], onSubmit }) => {
     if (!isOpen) return null;
 
     const [formData, setFormData] = useState({
         nom: '',
-        type: 'Client Interne',
-        groupe: 'Groupe 1',
+        type: 'Point',
+        groupe: groups[0]?.nom || 'Dépôt',
         lat: '',
         lng: '',
+        adresse: ''
     });
 
     const [mode, setMode] = useState('point'); // 'point' | 'zone'
@@ -70,13 +71,25 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
 
     useEffect(() => {
         if (initialData) {
-            setFormData(prev => ({
-                ...prev,
-                lat: initialData.lat || '',
-                lng: initialData.lng || ''
-            }));
+            setFormData({
+                nom: initialData.nom || '',
+                type: initialData.type || 'Point',
+                groupe: initialData.groupe || (groups[0]?.nom || 'Dépôt'),
+                lat: initialData.lat?.toString() || '',
+                lng: initialData.lng?.toString() || '',
+                adresse: initialData.adresse || ''
+            });
+        } else {
+            setFormData({
+                nom: '',
+                type: 'Point',
+                groupe: groups[0]?.nom || 'Dépôt',
+                lat: '',
+                lng: '',
+                adresse: ''
+            });
         }
-    }, [initialData]);
+    }, [initialData, groups, isOpen]);
 
     const handleLocationSelect = (latlng) => {
         setFormData(prev => ({
@@ -86,10 +99,30 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
         }));
     };
 
+    const handleCoordChange = (field, value) => {
+        // Allow numeric values, dot, and minus sign for manual entry
+        if (/^-?\d*\.?\d*$/.test(value) || value === '') {
+            setFormData(prev => ({ ...prev, [field]: value }));
+        }
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        console.log("Submitting POI:", { ...formData, mode, polygonPoints });
-        onClose();
+        const lat = parseFloat(formData.lat);
+        const lng = parseFloat(formData.lng);
+
+        if (isNaN(lat) || isNaN(lng)) {
+            alert('Veuillez saisir des coordonnées valides.');
+            return;
+        }
+
+        if (onSubmit) {
+            onSubmit({
+                ...formData,
+                lat,
+                lng
+            });
+        }
     };
 
     return (
@@ -99,7 +132,9 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
                 {/* === GAUCHE : FORMULAIRE === */}
                 <div className="w-1/3 p-6 flex flex-col border-r border-gray-100">
                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-gray-800">Nouveau POI</h2>
+                        <h2 className="text-xl font-bold text-gray-800">
+                            {initialData ? 'Modifier POI' : 'Nouveau POI'}
+                        </h2>
                     </div>
 
                     <form onSubmit={handleSubmit} className="flex-1 space-y-4">
@@ -115,50 +150,65 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-                            <select
-                                value={formData.type}
-                                onChange={e => setFormData({ ...formData, type: e.target.value })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
-                            >
-                                <option>Point</option>
-                                <option>Polygone</option>
-                            </select>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
+                                <select
+                                    value={formData.type}
+                                    onChange={e => setFormData({ ...formData, type: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                                >
+                                    <option>Point</option>
+                                    <option>Polygone</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Groupe *</label>
+                                <select
+                                    value={formData.groupe}
+                                    onChange={e => setFormData({ ...formData, groupe: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                                >
+                                    {groups.map(g => (
+                                        <option key={g.id} value={g.nom}>{g.nom}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Groupe *</label>
-                            <select
-                                value={formData.groupe}
-                                onChange={e => setFormData({ ...formData, groupe: e.target.value })}
-                                className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            >
-                                <option value="Dépôt">🟡 Dépôt</option>
-                                <option value="Client Interne">🟠 Client Interne</option>
-                                <option value="Client Externe">🔴 Client Externe</option>
-                                <option value="Station">🟣 Station</option>
-                                <option value="Zone Industrielle">🔵 Zone Industrielle</option>
-                            </select>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Adresse</label>
+                            <input
+                                type="text"
+                                value={formData.adresse}
+                                onChange={e => setFormData({ ...formData, adresse: e.target.value })}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all"
+                                placeholder="Adresse complète..."
+                            />
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
                             <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Latitude</label>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Latitude *</label>
                                 <input
                                     type="text"
-                                    readOnly
+                                    required
                                     value={formData.lat}
-                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600"
+                                    onChange={(e) => handleCoordChange('lat', e.target.value)}
+                                    placeholder="Ex: 36.8000"
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Longitude</label>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Longitude *</label>
                                 <input
                                     type="text"
-                                    readOnly
+                                    required
                                     value={formData.lng}
-                                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600"
+                                    onChange={(e) => handleCoordChange('lng', e.target.value)}
+                                    placeholder="Ex: 10.1000"
+                                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none transition-all"
                                 />
                             </div>
                         </div>
@@ -166,7 +216,7 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
                         <div className="mt-auto pt-4">
                             <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded-md mb-4 border border-orange-100 flex items-center gap-2">
                                 <FiMapPin />
-                                {mode === 'point' ? "Cliquez sur la carte pour placer le point." : "Cliquez pour dessiner la zone."}
+                                {mode === 'point' ? "Cliquez sur la carte ou saisissez les coordonnées." : "Cliquez pour dessiner la zone."}
                             </p>
 
                             <div className="flex gap-2">
@@ -210,7 +260,10 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
                     </div>
 
                     <MapContainer
-                        center={[initialData?.lat || 36.8, initialData?.lng || 10.1]}
+                        center={[
+                            parseFloat(formData.lat) || 36.8,
+                            parseFloat(formData.lng) || 10.1
+                        ]}
                         zoom={13}
                         className="h-full w-full"
                         zoomControl={true}
@@ -219,11 +272,18 @@ const PoiModal = ({ isOpen, onClose, initialData }) => {
                             attribution='&copy; OpenStreetMap'
                             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                         />
-                        <RecenterMap lat={initialData?.lat} lng={initialData?.lng} />
+                        <RecenterMap
+                            lat={parseFloat(formData.lat)}
+                            lng={parseFloat(formData.lng)}
+                        />
                         <LocationPicker
                             mode={mode}
                             onLocationSelect={handleLocationSelect}
-                            currentPos={formData.lat ? [formData.lat, formData.lng] : null}
+                            currentPos={
+                                (!isNaN(parseFloat(formData.lat)) && !isNaN(parseFloat(formData.lng)))
+                                    ? [parseFloat(formData.lat), parseFloat(formData.lng)]
+                                    : null
+                            }
                             polygonPoints={polygonPoints}
                             setPolygonPoints={setPolygonPoints}
                         />
