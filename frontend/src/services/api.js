@@ -39,6 +39,7 @@ export const camionsAPI = {
 // POI API
 export const poiAPI = {
     getPOIs: () => api.get('/poi'),
+    getPOIHistory: () => api.get('/poi/history'),
     createPOI: (data) => api.post('/poi', data),
     updatePOI: (id, data) => api.put(`/poi/${id}`, data),
     deletePOI: (id) => api.delete(`/poi/${id}`),

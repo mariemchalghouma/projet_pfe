@@ -53,6 +53,18 @@ export const initDatabase = async () => {
       )
     `);
 
+        // Create poi_historique table
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS poi_historique (
+        id SERIAL PRIMARY KEY,
+        poi_id INTEGER,
+        poi_nom VARCHAR(100),
+        action VARCHAR(50), -- CREATE, UPDATE, DELETE
+        details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
 
         await client.query(`
             CREATE INDEX IF NOT EXISTS idx_local_histo_gps_camion_ts

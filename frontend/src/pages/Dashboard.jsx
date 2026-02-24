@@ -1,193 +1,182 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import Layout from '../components/layout/Layout';
-import { useMapContext } from '../context/MapContext';
 import { camionsAPI } from '../services/api';
 import { reverseGeocodeBatch } from '../services/geocoding';
-import L from 'leaflet';
-import { FiTruck, FiUsers, FiNavigation, FiActivity, FiArrowUp, FiArrowDown } from 'react-icons/fi';
-
-const createIcon = (color, letter) => {
-    return L.divIcon({
-        className: 'custom-marker',
-        html: `<div style="
-            width:32px;height:32px;background:${color};border:3px solid white;border-radius:50%;
-            display:flex;align-items:center;justify-content:center;
-            color:white;font-weight:bold;font-size:13px;
-            box-shadow:0 2px 8px rgba(0,0,0,0.3);
-        ">${letter}</div>`,
-        iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -20],
-    });
-};
-
-const statusIcons = {
-    en_route: { color: '#22c55e', label: 'En route', icon: createIcon('#22c55e', 'C') },
-    arrete: { color: '#f97316', label: 'Arrêté', icon: createIcon('#f97316', 'C') },
-    arrete_nc: { color: '#ef4444', label: 'Arrêté NC', icon: createIcon('#ef4444', 'C') },
-};
+import { FiTruck, FiUsers, FiNavigation, FiActivity, FiArrowUp, FiArrowDown, FiMap } from 'react-icons/fi';
+import MapModal from '../components/map/MapModal';
 
 const Dashboard = () => {
-    const { setMapData } = useMapContext();
+    const [camions, setCamions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isMapOpen, setIsMapOpen] = useState(false);
+    const [mapPositions, setMapPositions] = useState([]);
 
     useEffect(() => {
         const loadCamions = async () => {
             try {
                 const { data } = await camionsAPI.getCamions();
                 const camionsData = data.data || [];
-                
-                // Charger les adresses pour tous les camions avec GPS
-                const coordsWithGPS = camionsData
+                setCamions(camionsData);
+
+                // Préparer les positions pour la carte
+                const positions = camionsData
                     .filter((c) => c.lat != null && c.lng != null)
-                    .map((c) => ({ lat: c.lat, lng: c.lng }));
-                
-                const addresses = await reverseGeocodeBatch(coordsWithGPS);
-                
-                // Créer les marqueurs avec les adresses
-                const markers = camionsData
-                    .filter((c) => c.lat != null && c.lng != null)
-                    .map((camion) => {
-                        const cfg = statusIcons[camion.statut] || statusIcons.arrete;
-                        const addressKey = `${camion.lat},${camion.lng}`;
-                        const address = addresses.get(addressKey) || camion.localisation || '—';
-                        
-                        return {
-                            id: camion.plaque,
-                            lat: camion.lat,
-                            lng: camion.lng,
-                            icon: cfg.icon,
-                            label: camion.plaque,
-                            sublabel: camion.chauffeur || '—',
-                            info: `📍 ${address} · ${camion.vitesse ?? 0} km/h`,
-                            badgeLabel: cfg.label,
-                            badgeColor: cfg.color,
-                        };
-                    });
-                
-                setMapData({ markers, polylines: [], flyTo: null, selectedMarkerId: null });
+                    .map((c) => ({
+                        id: c.plaque,
+                        lat: c.lat,
+                        lng: c.lng,
+                        label: c.plaque,
+                        status: c.statut,
+                        info: `🚚 ${c.chauffeur || '—'} · 📍 ${c.localisation || '—'}`
+                    }));
+                setMapPositions(positions);
+
             } catch (error) {
                 console.error('Erreur chargement camions Dashboard:', error);
-                setMapData({ markers: [], polylines: [], flyTo: null, selectedMarkerId: null });
+            } finally {
+                setLoading(false);
             }
         };
-        
+
         loadCamions();
-    }, [setMapData]);
+    }, []);
 
     return (
         <Layout>
-            <div className="p-6">
-                <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
+            <div className="p-8 max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-8">
+                    <div>
+                        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Tableau de bord</h1>
+                        <p className="text-gray-500 mt-1 font-medium">Aperçu en temps réel de votre flotte</p>
+                    </div>
+                    <button
+                        onClick={() => setIsMapOpen(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-xl shadow-gray-200"
+                    >
+                        <FiMap className="text-xl" />
+                        Suivi en temps réel
+                    </button>
+                </div>
 
                 {/* Stats Cards */}
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm text-gray-500">Total Camions</p>
-                            <div className="bg-orange-100 p-2 rounded-lg">
-                                <FiTruck className="text-orange-500" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between mb-4">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Camions</p>
+                            <div className="bg-orange-100 p-3 rounded-2xl text-orange-600">
+                                <FiTruck className="text-xl" />
                             </div>
                         </div>
-                        <p className="text-2xl font-bold text-gray-800">12</p>
-                        <div className="flex items-center gap-1 mt-1 text-green-500 text-xs">
+                        <p className="text-3xl font-black text-gray-900">12</p>
+                        <div className="flex items-center gap-1 mt-2 text-green-600 text-sm font-bold">
                             <FiArrowUp /> <span>8 en route</span>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm text-gray-500">Chauffeurs Actifs</p>
-                            <div className="bg-blue-100 p-2 rounded-lg">
-                                <FiUsers className="text-blue-500" />
+                    <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between mb-4">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Chauffeurs Actifs</p>
+                            <div className="bg-blue-100 p-3 rounded-2xl text-blue-600">
+                                <FiUsers className="text-xl" />
                             </div>
                         </div>
-                        <p className="text-2xl font-bold text-gray-800">10</p>
-                        <div className="flex items-center gap-1 mt-1 text-gray-400 text-xs">
-                            <span>sur 12 total</span>
-                        </div>
+                        <p className="text-3xl font-black text-gray-900">10</p>
+                        <p className="text-gray-400 text-sm font-medium mt-2">sur 12 total</p>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm text-gray-500">Distance Totale</p>
-                            <div className="bg-green-100 p-2 rounded-lg">
-                                <FiNavigation className="text-green-500" />
+                    <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between mb-4">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Distance Totale</p>
+                            <div className="bg-green-100 p-3 rounded-2xl text-green-600">
+                                <FiNavigation className="text-xl" />
                             </div>
                         </div>
-                        <p className="text-2xl font-bold text-gray-800">1,245 <span className="text-sm text-gray-400">km</span></p>
-                        <div className="flex items-center gap-1 mt-1 text-green-500 text-xs">
+                        <p className="text-3xl font-black text-gray-900">1,245 <span className="text-base text-gray-300 font-bold">km</span></p>
+                        <div className="flex items-center gap-1 mt-2 text-green-600 text-sm font-bold">
                             <FiArrowUp /> <span>+12% aujourd'hui</span>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between mb-2">
-                            <p className="text-sm text-gray-500">Alertes</p>
-                            <div className="bg-red-100 p-2 rounded-lg">
-                                <FiActivity className="text-red-500" />
+                    <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between mb-4">
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Alertes</p>
+                            <div className="bg-red-100 p-3 rounded-2xl text-red-600">
+                                <FiActivity className="text-xl" />
                             </div>
                         </div>
-                        <p className="text-2xl font-bold text-gray-800">3</p>
-                        <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                        <p className="text-3xl font-black text-gray-900">3</p>
+                        <div className="flex items-center gap-1 mt-2 text-red-600 text-sm font-bold">
                             <FiArrowDown /> <span>2 non conformes</span>
                         </div>
                     </div>
                 </div>
 
-                {/* Activité récente */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-                    <h2 className="text-base font-bold text-gray-800 mb-3">Activité récente</h2>
-                    <div className="space-y-2.5">
-                        {[
-                            { time: '14:32', text: '120 TDS 4578 - Départ de Tunis', color: 'bg-orange-500' },
-                            { time: '14:15', text: '95 TDS 6543 - Arrêt non conforme à Nabeul', color: 'bg-red-500' },
-                            { time: '13:48', text: '142 TDS 8877 - En route vers Sousse', color: 'bg-orange-500' },
-                            { time: '13:20', text: '78 NGI 5544 - Arrêt à Zaghouan', color: 'bg-green-500' },
-                            { time: '12:55', text: '185 TDS 9321 - Arrêt à Manouba', color: 'bg-green-500' },
-                        ].map((item, i) => (
-                            <div key={i} className="flex items-start gap-3">
-                                <span className={`w-2 h-2 rounded-full mt-1.5 ${item.color}`}></span>
-                                <div>
-                                    <p className="text-sm text-gray-700">{item.text}</p>
-                                    <p className="text-xs text-gray-400">{item.time}</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Activité récente */}
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                        <h2 className="text-xl font-black text-gray-900 mb-6 italic tracking-tight uppercase text-[14px]">Activité récente</h2>
+                        <div className="space-y-6">
+                            {[
+                                { time: '14:32', text: '120 TDS 4578 - Départ de Tunis', color: 'bg-orange-500' },
+                                { time: '14:15', text: '95 TDS 6543 - Arrêt non conforme à Nabeul', color: 'bg-red-500' },
+                                { time: '13:48', text: '142 TDS 8877 - En route vers Sousse', color: 'bg-orange-500' },
+                                { time: '13:20', text: '78 NGI 5544 - Arrêt à Zaghouan', color: 'bg-green-500' },
+                                { time: '12:55', text: '185 TDS 9321 - Arrêt à Manouba', color: 'bg-green-500' },
+                            ].map((item, i) => (
+                                <div key={i} className="flex items-start gap-4">
+                                    <span className={`w-3 h-3 rounded-full mt-1.5 shrink-0 shadow-sm ${item.color}`}></span>
+                                    <div>
+                                        <p className="text-[15px] font-bold text-gray-800">{item.text}</p>
+                                        <p className="text-xs text-gray-400 font-medium mt-0.5">{item.time}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Statut flotte */}
+                    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-sm">
+                        <h2 className="text-xl font-black text-gray-900 mb-6 italic tracking-tight uppercase text-[14px]">Statut de la flotte</h2>
+                        <div className="space-y-8">
+                            <div>
+                                <div className="flex justify-between text-sm mb-2">
+                                    <span className="font-bold text-gray-500">En route</span>
+                                    <span className="font-black text-green-600">6 camions</span>
+                                </div>
+                                <div className="w-full bg-gray-50 rounded-full h-3">
+                                    <div className="bg-green-500 h-3 rounded-full shadow-sm" style={{ width: '50%' }}></div>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Statut flotte */}
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <h2 className="text-base font-bold text-gray-800 mb-3">Statut de la flotte</h2>
-                    <div className="space-y-3">
-                        <div>
-                            <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-600">En route</span>
-                                <span className="font-semibold text-gray-800">6 camions</span>
+                            <div>
+                                <div className="flex justify-between text-sm mb-2">
+                                    <span className="font-bold text-gray-500">Arrêt conforme</span>
+                                    <span className="font-black text-orange-600">4 camions</span>
+                                </div>
+                                <div className="w-full bg-gray-50 rounded-full h-3">
+                                    <div className="bg-orange-500 h-3 rounded-full shadow-sm" style={{ width: '33%' }}></div>
+                                </div>
                             </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2">
-                                <div className="bg-green-500 h-2 rounded-full" style={{ width: '50%' }}></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-600">Arrêt conforme</span>
-                                <span className="font-semibold text-gray-800">4 camions</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2">
-                                <div className="bg-orange-500 h-2 rounded-full" style={{ width: '33%' }}></div>
-                            </div>
-                        </div>
-                        <div>
-                            <div className="flex justify-between text-sm mb-1">
-                                <span className="text-gray-600">Arrêt non conforme</span>
-                                <span className="font-semibold text-gray-800">2 camions</span>
-                            </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2">
-                                <div className="bg-red-500 h-2 rounded-full" style={{ width: '17%' }}></div>
+                            <div>
+                                <div className="flex justify-between text-sm mb-2">
+                                    <span className="font-bold text-gray-500">Arrêt non conforme</span>
+                                    <span className="font-black text-red-600">2 camions</span>
+                                </div>
+                                <div className="w-full bg-gray-50 rounded-full h-3">
+                                    <div className="bg-red-500 h-3 rounded-full shadow-sm" style={{ width: '17%' }}></div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <MapModal
+                isOpen={isMapOpen}
+                onClose={() => setIsMapOpen(false)}
+                positions={mapPositions}
+                title="Suivi de la flotte en temps réel"
+                zoom={7}
+            />
         </Layout>
     );
 };

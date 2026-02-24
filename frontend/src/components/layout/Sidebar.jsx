@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
     FiGrid, FiTruck, FiStopCircle, FiUnlock,
-    FiDroplet, FiNavigation, FiFileText, FiMapPin,
+    FiDroplet, FiMapPin,
     FiSettings, FiLogOut, FiMenu
 } from 'react-icons/fi';
 
@@ -29,11 +29,9 @@ const Sidebar = () => {
         { name: 'Suivi Arrêt', path: '/suivi-arret', icon: FiStopCircle },
         { name: 'Ouverture Porte', path: '/ouverture-porte', icon: FiUnlock },
         { name: 'Carburant', path: '/carburant', icon: FiDroplet },
-        { name: 'Voyages', path: '/voyages', icon: FiNavigation },
     ];
 
     const secondaryMenu = [
-        { name: 'Rapports', path: '/rapports', icon: FiFileText },
         { name: 'Gestion POI', path: '/gestion-poi', icon: FiMapPin },
         { name: 'Paramètres', path: '/parametres', icon: FiSettings },
     ];

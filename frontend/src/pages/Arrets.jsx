@@ -1,62 +1,26 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/layout/Layout';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import { FiCalendar, FiUpload, FiPlus, FiFilter } from 'react-icons/fi';
-import PoiModal from '../components/PoiModal'; // Import the new modal
-
-// ====== ICÔNES PERSONNALISÉES ======
-const createIcon = (color) => {
-    return L.divIcon({
-        className: 'custom-marker',
-        html: `
-      <div style="
-        width: 28px; height: 28px;
-        background: ${color};
-        border: 2px solid white;
-        border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        color: white;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-      ">
-        <div style="width: 10px; height: 10px; background: white; border-radius: 50%;"></div>
-      </div>
-    `,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -10],
-    });
-};
+import { FiCalendar, FiUpload, FiPlus, FiFilter, FiMap } from 'react-icons/fi';
+import PoiModal from '../components/PoiModal';
+import MapModal from '../components/map/MapModal';
+import { poiAPI } from '../services/api';
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid,
+    Tooltip, ResponsiveContainer, Cell
+} from 'recharts';
 
 const statusConfig = {
-    conforme: { color: '#22c55e', bg: '#dcfce7', label: 'Arrêt conforme', icon: createIcon('#22c55e') },
-    non_conforme: { color: '#ef4444', bg: '#fee2e2', label: 'Arrêt non conforme', icon: createIcon('#ef4444') },
-    warning: { color: '#f97316', bg: '#ffedd5', label: 'Arrêt C', icon: createIcon('#f97316') },
-};
-
-// ====== COMPOSANT MAP FLY ======
-const MapController = ({ position, zoom, resizeTrigger }) => {
-    const map = useMap();
-
-    useEffect(() => {
-        if (position) {
-            map.flyTo(position, zoom || 11, { duration: 1.0 });
-        }
-    }, [position, zoom, map]);
-
-    useEffect(() => {
-        map.invalidateSize();
-    }, [resizeTrigger, map]);
-
-    return null;
+    conforme: { color: '#22c55e', bg: '#dcfce7', label: 'Arrêt conforme' },
+    non_conforme: { color: '#ef4444', bg: '#fee2e2', label: 'Arrêt non conforme' },
+    warning: { color: '#f97316', bg: '#ffedd5', label: 'Arrêt C' },
 };
 
 const Arrets = () => {
     // === ETATS ===
     const [arrets, setArrets] = useState([]);
+    const [groups, setGroups] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedArretId, setSelectedArretId] = useState(null);
-    const [flyTo, setFlyTo] = useState(null);
 
     // Fetch data from API
     useEffect(() => {
@@ -73,33 +37,85 @@ const Arrets = () => {
                 setLoading(false);
             }
         };
+
+        const fetchGroups = async () => {
+            // Ideally we'd have a groups API, but for now we can use the same logic/data as GestionPoi
+            // Since GestionPoi uses hardcoded + local state for now, we'll initialize it here
+            const initialGroups = [
+                { id: 'g1', nom: 'Dépôt', couleur: '#fbbf24' },
+                { id: 'g2', nom: 'Client Interne', couleur: '#f97316' },
+                { id: 'g3', nom: 'Client Externe', couleur: '#ef4444' },
+                { id: 'g4', nom: 'Station', couleur: '#a855f7' },
+                { id: 'g5', nom: 'Zone Industrielle', couleur: '#06b6d4' }
+            ];
+            setGroups(initialGroups);
+        };
+
         fetchArrets();
+        fetchGroups();
     }, []);
 
-    // Layout Resizable
-    const [leftPanelWidth, setLeftPanelWidth] = useState(55); // Pourcentage
-    const [isResizing, setIsResizing] = useState(false);
-    const containerRef = useRef(null);
-
     // Filtres
-    const [filterDate, setFilterDate] = useState('');
+    const [dateFilterMode, setDateFilterMode] = useState('day'); // 'day', 'range', 'week', 'month'
+    const [filterDate, setFilterDate] = useState(''); // YYYY-MM-DD
+    const [filterStartDate, setFilterStartDate] = useState('');
+    const [filterEndDate, setFilterEndDate] = useState('');
+    const [filterWeek, setFilterWeek] = useState(''); // YYYY-Www
+    const [filterMonth, setFilterMonth] = useState(''); // YYYY-MM
     const [filterType, setFilterType] = useState('Tous');
+    const [filterMatricule, setFilterMatricule] = useState('');
 
-    // Modal
+    // Modals
     const [showPoiModal, setShowPoiModal] = useState(false);
     const [poiModalData, setPoiModalData] = useState(null);
+    const [isMapOpen, setIsMapOpen] = useState(false);
+    const [mapPositions, setMapPositions] = useState([]);
 
     // === FILTRAGE ET STATS DYNAMIQUES ===
     const filteredData = useMemo(() => {
         return arrets.filter(arret => {
-            const matchesDate = filterDate ? arret.date.includes(filterDate) : true;
+            // Extraction de la date (YYYY-MM-DD) depuis "YYYY-MM-DD HH:mm:ss"
+            const arretDateStr = arret.date.split(' ')[0];
+            const arretDate = new Date(arretDateStr);
+
+            let matchesDate = true;
+            if (dateFilterMode === 'day' && filterDate) {
+                matchesDate = arretDateStr === filterDate;
+            } else if (dateFilterMode === 'range') {
+                if (filterStartDate && filterEndDate) {
+                    matchesDate = arretDateStr >= filterStartDate && arretDateStr <= filterEndDate;
+                } else if (filterStartDate) {
+                    matchesDate = arretDateStr >= filterStartDate;
+                } else if (filterEndDate) {
+                    matchesDate = arretDateStr <= filterEndDate;
+                }
+            } else if (dateFilterMode === 'week' && filterWeek) {
+                const [year, week] = filterWeek.split('-W').map(Number);
+                const getWeekNumber = (d) => {
+                    d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+                    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+                    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+                    return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+                };
+                const arretWeekNum = getWeekNumber(arretDate);
+                const arretYear = arretDate.getFullYear();
+                matchesDate = arretYear === year && arretWeekNum === week;
+            } else if (dateFilterMode === 'month' && filterMonth) {
+                matchesDate = arretDateStr.startsWith(filterMonth);
+            }
+
             const matchesType =
                 filterType === 'Tous' ? true :
                     filterType === 'Conforme' ? arret.status === 'conforme' :
                         filterType === 'Non conforme' ? arret.status === 'non_conforme' : true;
-            return matchesDate && matchesType;
+
+            const normalizedFilter = filterMatricule.replace(/\s/g, '').toLowerCase();
+            const normalizedCamion = (arret.camion || '').replace(/\s/g, '').toLowerCase();
+            const matchesMatricule = filterMatricule ? normalizedCamion.includes(normalizedFilter) : true;
+
+            return matchesDate && matchesType && matchesMatricule;
         });
-    }, [arrets, filterDate, filterType]);
+    }, [arrets, dateFilterMode, filterDate, filterStartDate, filterEndDate, filterWeek, filterMonth, filterType, filterMatricule]);
 
     const stats = useMemo(() => {
         return {
@@ -112,242 +128,348 @@ const Arrets = () => {
     // === HANDLERS ===
     const handleSelectArret = (arret) => {
         setSelectedArretId(arret.id);
-        setFlyTo([arret.lat, arret.lng]);
+        setMapPositions([{
+            id: arret.id,
+            lat: arret.lat,
+            lng: arret.lng,
+            label: arret.camion,
+            status: arret.status,
+            info: `🕒 ${arret.date} · ⏳ ${arret.duree}`
+        }]);
+        setIsMapOpen(true);
     };
 
     const handleOpenPoiModal = (e, arret) => {
-        e.stopPropagation(); // Éviter de sélectionner la ligne quand on clique sur le bouton
+        e.stopPropagation();
         setPoiModalData(arret);
         setShowPoiModal(true);
     };
 
-    // Gestion du redimensionnement
-    const startResizing = () => setIsResizing(true);
-    const stopResizing = () => setIsResizing(false);
+    const handleOpenFullMap = () => {
+        const positions = filteredData.map(a => ({
+            id: a.id,
+            lat: a.lat,
+            lng: a.lng,
+            label: a.camion,
+            status: a.status,
+            info: `🕒 ${a.date} · ⏳ ${a.duree}`
+        }));
+        setMapPositions(positions);
+        setIsMapOpen(true);
+    };
 
-    const resize = (e) => {
-        if (isResizing && containerRef.current) {
-            const newWidth = (e.clientX / containerRef.current.clientWidth) * 100;
-            if (newWidth > 20 && newWidth < 80) { // Limites min/max
-                setLeftPanelWidth(newWidth);
-            }
+    const handleSavePoi = async (poiData) => {
+        try {
+            await poiAPI.createPOI(poiData);
+            setShowPoiModal(false);
+            setPoiModalData(null);
+            alert('POI ajouté avec succès !');
+            // Refresh arrets if needed, though they don't directly show POI names in this list
+            // but the status might change if we re-fetch from backend
+            window.location.reload(); // Quick way to refresh calculations
+        } catch (error) {
+            console.error('Failed to save POI:', error);
+            alert('Erreur lors de l\'ajout du POI.');
         }
     };
 
-    useEffect(() => {
-        if (isResizing) {
-            window.addEventListener('mousemove', resize);
-            window.addEventListener('mouseup', stopResizing);
-        }
-        return () => {
-            window.removeEventListener('mousemove', resize);
-            window.removeEventListener('mouseup', stopResizing);
-        };
-    }, [isResizing]);
+    // === DATA POUR LE GRAPHIQUE ===
+    const chartData = useMemo(() => {
+        const dataByDate = {};
+        filteredData.forEach(arret => {
+            const date = arret.date.split(' ')[0].substring(5); // Format MM-DD pour l'axe X
+            if (!dataByDate[date]) {
+                dataByDate[date] = { date, conforme: 0, non_conforme: 0 };
+            }
+            if (arret.status === 'conforme') dataByDate[date].conforme++;
+            else dataByDate[date].non_conforme++;
+        });
+        return Object.values(dataByDate).sort((a, b) => a.date.localeCompare(b.date));
+    }, [filteredData]);
 
     return (
-        <Layout withMap={false}>
-            {/* Conteneur principal pour le layout resizable */}
-            <div
-                ref={containerRef}
-                className={`flex h-screen -mt-0 overflow-hidden ${isResizing ? 'cursor-col-resize select-none' : ''}`}
-            >
-                {/* ====== PANNEAU GAUCHE - LISTE & KPI ====== */}
-                <div
-                    className="bg-white flex flex-col overflow-hidden relative"
-                    style={{ width: `${leftPanelWidth}%` }}
-                >
+        <Layout>
+            <div className="p-8 max-w-[1600px] mx-auto min-h-screen">
+                {/* 1. Filtres & KPIs en haut */}
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex bg-gray-100 p-1 rounded-xl">
+                            {[
+                                { id: 'day', label: 'Jour' },
+                                { id: 'range', label: 'Plage' },
+                                { id: 'week', label: 'Semaine' },
+                                { id: 'month', label: 'Mois' }
+                            ].map(mode => (
+                                <button
+                                    key={mode.id}
+                                    onClick={() => setDateFilterMode(mode.id)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${dateFilterMode === mode.id ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                >
+                                    {mode.label}
+                                </button>
+                            ))}
+                        </div>
 
-                    {/* Header & Statistiques */}
-                    <div className="p-6 pb-2">
-                        <h1 className="text-2xl font-bold text-gray-800 mb-6">Rapport arrêts</h1>
-
-                        {/* Filtres + KPIs */}
-                        <div className="flex flex-wrap items-start justify-between mb-6 gap-4">
-                            {/* Inputs Filtres */}
-                            <div className="flex gap-3">
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <FiCalendar className="text-gray-400" />
-                                    </div>
+                        <div className="flex items-center gap-2">
+                            {dateFilterMode === 'day' && (
+                                <input
+                                    type="date"
+                                    value={filterDate}
+                                    onChange={(e) => setFilterDate(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all font-medium"
+                                />
+                            )}
+                            {dateFilterMode === 'range' && (
+                                <div className="flex items-center gap-2">
                                     <input
-                                        type="text"
-                                        placeholder="aaaa-mm-jj"
-                                        value={filterDate}
-                                        onChange={(e) => setFilterDate(e.target.value)}
-                                        className="pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm w-36 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        type="date"
+                                        value={filterStartDate}
+                                        onChange={(e) => setFilterStartDate(e.target.value)}
+                                        className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all font-medium"
+                                    />
+                                    <span className="text-gray-400 font-bold">au</span>
+                                    <input
+                                        type="date"
+                                        value={filterEndDate}
+                                        onChange={(e) => setFilterEndDate(e.target.value)}
+                                        className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all font-medium"
                                     />
                                 </div>
-                                <div className="relative">
-                                    <select
-                                        value={filterType}
-                                        onChange={(e) => setFilterType(e.target.value)}
-                                        className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
-                                    >
-                                        <option>Tous</option>
-                                        <option>Conforme</option>
-                                        <option>Non conforme</option>
-                                    </select>
-                                    <FiFilter className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                </div>
+                            )}
+                            {dateFilterMode === 'week' && (
+                                <input
+                                    type="week"
+                                    value={filterWeek}
+                                    onChange={(e) => setFilterWeek(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all font-medium"
+                                />
+                            )}
+                            {dateFilterMode === 'month' && (
+                                <input
+                                    type="month"
+                                    value={filterMonth}
+                                    onChange={(e) => setFilterMonth(e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all font-medium"
+                                />
+                            )}
+                        </div>
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <FiFilter className="text-gray-400" />
                             </div>
-
-                            {/* Cartes KPI */}
-                            <div className="flex gap-4">
-                                <div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-center shadow-lg shadow-orange-200">
-                                    <p className="text-xs font-semibold uppercase tracking-wider mb-0.5">NOMBRE D'ARRÊTS</p>
-                                    <p className="text-2xl font-bold">{stats.total}</p>
-                                </div>
-                                <div className="text-center px-2 py-2">
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5">ARRÊTS NC</p>
-                                    <p className="text-2xl font-bold text-gray-800">{stats.nc}</p>
-                                </div>
-                                <div className="text-center px-2 py-2">
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-0.5">ARRÊTS C</p>
-                                    <p className="text-2xl font-bold text-gray-800">{stats.c}</p>
-                                </div>
-                            </div>
+                            <input
+                                type="text"
+                                placeholder="Matricule..."
+                                value={filterMatricule}
+                                onChange={(e) => setFilterMatricule(e.target.value)}
+                                className="pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm w-44 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                            />
+                        </div>
+                        <div className="relative">
+                            <select
+                                value={filterType}
+                                onChange={(e) => setFilterType(e.target.value)}
+                                className="pl-3 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm bg-gray-50 appearance-none focus:outline-none focus:ring-2 focus:ring-orange-500 border-none cursor-pointer font-medium"
+                            >
+                                <option>Tous</option>
+                                <option>Conforme</option>
+                                <option>Non conforme</option>
+                            </select>
+                            <FiFilter className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                         </div>
 
-                        {/* Barre d'action secondaire */}
-                        <div className="flex justify-between items-center mb-2">
-                            <div className="text-center"></div>
-                            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                                <FiUpload />
-                                Importer POI
-                            </button>
-                        </div>
+                        <button
+                            onClick={handleOpenFullMap}
+                            className="p-2.5 bg-gray-50 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-all border border-gray-100"
+                            title="Voir sur la carte"
+                        >
+                            <FiMap className="text-lg" />
+                        </button>
                     </div>
 
-                    {/* Table des arrêts */}
-                    <div className="flex-1 overflow-auto px-6 pb-6">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-500 uppercase bg-gray-50 sticky top-0 z-10">
-                                <tr>
-                                    <th className="px-4 py-3 font-semibold rounded-tl-lg">Camion</th>
-                                    <th className="px-4 py-3 font-semibold">Date</th>
-                                    <th className="px-4 py-3 font-semibold">Durée</th>
-                                    <th className="px-4 py-3 font-semibold">POI GPS</th>
-                                    <th className="px-4 py-3 font-semibold">POI Planning</th>
-                                    <th className="px-4 py-3 font-semibold">N° Voyage</th>
-                                    <th className="px-4 py-3 font-semibold rounded-tr-lg">Action</th>
+                    {/* KPIs déplacés en haut à droite */}
+                    <div className="flex items-center gap-6">
+                        <div className="text-right">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight">Total</p>
+                            <p className="text-xl font-black text-gray-900">{stats.total}</p>
+                        </div>
+                        <div className="w-px h-8 bg-gray-100"></div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest leading-tight">Conformes</p>
+                            <p className="text-xl font-black text-green-600">{stats.c}</p>
+                        </div>
+                        <div className="w-px h-8 bg-gray-100"></div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest leading-tight">Non Conformes</p>
+                            <p className="text-xl font-black text-red-600">{stats.nc}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 2. Section Statistiques - Graphe Pleine Largeur */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm mb-8">
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-[0.1em]">
+                            ARRÊTS PAR DATE — CONFORME VS NON CONFORME
+                        </h3>
+                    </div>
+
+                    <div className="h-[180px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                                data={chartData}
+                                margin={{ top: 10, right: 10, left: -20, bottom: 20 }}
+                            >
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                <XAxis
+                                    dataKey="date"
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={{ fontSize: 10, fontWeight: 600, fill: '#9ca3af' }}
+                                    dy={10}
+                                />
+                                <YAxis
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tick={{ fontSize: 10, fill: '#d1d5db' }}
+                                />
+                                <Tooltip
+                                    cursor={{ fill: '#f9fafb' }}
+                                    contentStyle={{
+                                        borderRadius: '12px',
+                                        border: 'none',
+                                        boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
+                                        fontSize: '12px'
+                                    }}
+                                />
+                                <Bar
+                                    dataKey="conforme"
+                                    name="Conforme"
+                                    stackId="a"
+                                    fill="#52c41a"
+                                    radius={chartData.some(d => d.non_conforme > 0) ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                                    barSize={40}
+                                />
+                                <Bar
+                                    dataKey="non_conforme"
+                                    name="Non conforme"
+                                    stackId="a"
+                                    fill="#ff4d4f"
+                                    radius={[4, 4, 0, 0]}
+                                    barSize={40}
+                                />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                    <div className="flex justify-center gap-6 mt-4">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-sm bg-[#52c41a]"></div>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Conforme</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-sm bg-[#ff4d4f]"></div>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Non conforme</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Table des arrêts */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden min-h-[500px]">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left border-collapse">
+                            <thead>
+                                <tr className="bg-gray-50/50 border-b border-gray-100">
+                                    <th className="px-6 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[11px]">Camion</th>
+                                    <th className="px-6 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[11px]">Date & Heure</th>
+                                    <th className="px-6 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[11px]">Durée</th>
+                                    <th className="px-6 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[11px]">Localisation (GPS)</th>
+                                    <th className="px-6 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[11px]">Vérification (POI)</th>
+                                    <th className="px-6 py-2.5 font-bold text-gray-500 uppercase tracking-wider text-[11px]">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-100">
+                            <tbody className="divide-y divide-gray-50">
                                 {filteredData.map((arret) => (
                                     <tr
                                         key={arret.id}
                                         onClick={() => handleSelectArret(arret)}
-                                        className={`cursor-pointer transition-colors border-b border-white border-4 ${selectedArretId === arret.id ? 'ring-2 ring-orange-400' : ''}`}
-                                        style={{ backgroundColor: statusConfig[arret.status].bg }}
+                                        className={`group cursor-pointer transition-all ${selectedArretId === arret.id ? 'ring-2 ring-inset ring-orange-200' : ''}`}
+                                        style={{
+                                            backgroundColor: arret.status === 'conforme' ? '#f0fdf4' : '#fef2f2'
+                                        }}
                                     >
-                                        <td className="px-4 py-4 font-bold text-gray-700">
-                                            {arret.camion.split(' ').map((chunk, i) => (
-                                                <span key={i} className="block">{chunk}</span>
-                                            ))}
+                                        <td className="px-6 py-2 whitespace-nowrap">
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-gray-900 text-sm">{arret.camion}</span>
+                                            </div>
                                         </td>
-                                        <td className="px-4 py-4 whitespace-nowrap">
-                                            {arret.date.split(' ').map((chunk, i) => (
-                                                <span key={i} className="block text-gray-600">{chunk}</span>
-                                            ))}
+                                        <td className="px-6 py-2 whitespace-nowrap font-medium text-gray-600">
+                                            {arret.date}
                                         </td>
-                                        <td className="px-4 py-4 font-medium">{arret.duree}</td>
-                                        <td className="px-4 py-4 text-gray-600">{arret.poiGps}</td>
-                                        <td className="px-4 py-4 text-gray-600">{arret.poiPlanning}</td>
-                                        <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{arret.nVoyage}</td>
-                                        <td className="px-4 py-4">
-                                            {/* Bouton visible UNIQUEMENT si statut Non Conforme */}
-                                            {arret.status === 'non_conforme' && (
+                                        <td className="px-6 py-2 whitespace-nowrap">
+                                            <span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-700">
+                                                {arret.duree}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-2">
+                                            <div className="flex flex-col">
+                                                <span className="font-semibold text-gray-900 text-[12px] tracking-tight truncate max-w-[200px]">
+                                                    {arret.poiPlanning === '-' ? 'Site Inconnu' : arret.poiPlanning}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-2">
+                                            <div className="flex flex-col gap-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <div className={`w-2 h-2 rounded-full ${arret.status === 'conforme' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                                    <span className={`text-[10px] font-semibold uppercase tracking-tighter ${arret.status === 'conforme' ? 'text-green-700' : 'text-red-700'}`}>
+                                                        {arret.status === 'conforme' ? 'Conforme' : 'Écart détecté'}
+                                                    </span>
+                                                </div>
+                                                {arret.distance !== null ? (
+                                                    <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-lg w-fit">
+                                                        <span className="text-[9px] font-medium text-gray-400 uppercase tracking-widest">Dist.</span>
+                                                        <span className="text-[11px] font-semibold text-gray-900">{arret.distance}m</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[10px] font-bold text-gray-300">Distance indisponible</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-2">
+                                            <div className="flex items-center gap-2 transition-opacity">
+                                                {arret.status === 'non_conforme' && (
+                                                    <button
+                                                        onClick={(e) => handleOpenPoiModal(e, arret)}
+                                                        className="p-2 bg-white border border-gray-200 rounded-lg text-gray-600 hover:text-orange-600 hover:border-orange-200 transition-all shadow-sm"
+                                                        title="Ajouter ce lieu comme POI"
+                                                    >
+                                                        <FiPlus />
+                                                    </button>
+                                                )}
                                                 <button
-                                                    onClick={(e) => handleOpenPoiModal(e, arret)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-sm whitespace-nowrap z-20 relative"
+                                                    className="p-2 bg-white border border-gray-200 rounded-lg text-gray-600 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm"
+                                                    title="Détails de l'arrêt"
                                                 >
-                                                    <FiPlus /> Ajouter POI
+                                                    <FiMap />
                                                 </button>
-                                            )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                        {filteredData.length === 0 && (
-                            <div className="text-center py-10 text-gray-400">
-                                Aucun arrêt ne correspond aux filtres.
-                            </div>
-                        )}
                     </div>
-                </div>
-
-                {/* ====== SPLITTER (POIGNÉE DE REDIMENSIONNEMENT) ====== */}
-                <div
-                    onMouseDown={startResizing}
-                    className="w-1 bg-gray-200 hover:bg-orange-400 cursor-col-resize hover:w-1.5 transition-all z-50 flex items-center justify-center"
-                >
-                    <div className="h-8 w-1 bg-gray-400 rounded-full"></div>
-                </div>
-
-                {/* ====== PANNEAU DROIT - CARTE ====== */}
-                <div
-                    className="flex-grow relative h-full bg-gray-100"
-                    style={{ width: `${100 - leftPanelWidth}%` }}
-                >
-                    <MapContainer
-                        center={[36.5, 10.2]}
-                        zoom={8}
-                        className="h-full w-full"
-                        zoomControl={false}
-                    >
-                        <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-
-                        {/* Controlleur pour FlyTo et Resize */}
-                        <MapController position={flyTo} zoom={13} resizeTrigger={leftPanelWidth} />
-
-                        {/* Marqueurs */}
-                        {filteredData.map((arret) => (
-                            <Marker
-                                key={arret.id}
-                                position={[arret.lat, arret.lng]}
-                                icon={statusConfig[arret.status].icon}
-                                eventHandlers={{
-                                    click: () => handleSelectArret(arret),
-                                }}
-                            >
-                                <Popup>
-                                    <div className="text-sm">
-                                        <strong>{arret.camion}</strong>
-                                        <br />
-                                        {arret.date}
-                                        <br />
-                                        <span style={{ color: statusConfig[arret.status].color, fontWeight: 'bold' }}>
-                                            {statusConfig[arret.status].label}
-                                        </span>
-                                    </div>
-                                </Popup>
-                            </Marker>
-                        ))}
-                    </MapContainer>
-
-                    {/* Légende flottante */}
-                    <div className="absolute bottom-6 right-6 bg-white rounded-lg shadow-xl p-4 z-[1000] text-sm border border-gray-100">
-                        <h4 className="font-bold text-gray-800 mb-2">Légende</h4>
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm"></span>
-                                <span className="text-gray-600">Arrêt conforme</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow-sm"></span>
-                                <span className="text-gray-600">Arrêt non conforme</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full bg-orange-500 border-2 border-white shadow-sm"></span>
-                                <span className="text-gray-600">Arrêt C</span>
-                            </div>
+                    {filteredData.length === 0 && !loading && (
+                        <div className="flex flex-col items-center justify-center py-20 bg-gray-50/30">
+                            <FiFilter className="text-5xl text-gray-200 mb-4" />
+                            <p className="text-gray-400 font-medium">Aucun arrêt ne correspond aux critères de recherche.</p>
                         </div>
-                    </div>
+                    )}
+                    {loading && (
+                        <div className="flex justify-center py-20">
+                            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -356,6 +478,16 @@ const Arrets = () => {
                 isOpen={showPoiModal}
                 onClose={() => setShowPoiModal(false)}
                 initialData={poiModalData}
+                groups={groups}
+                onSubmit={handleSavePoi}
+            />
+
+            {/* ====== MAP MODAL ====== */}
+            <MapModal
+                isOpen={isMapOpen}
+                onClose={() => setIsMapOpen(false)}
+                positions={mapPositions}
+                title={mapPositions.length === 1 ? `Position : ${mapPositions[0].label}` : "Aperçu des arrêts filtrés"}
             />
         </Layout>
     );
